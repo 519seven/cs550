@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
 	else if (score2 > score1)
 		fprintf(stderr, "Player 2 Wins\n");
 	else if (score1 == score2)
-		fprintf(stderr, "Players Draw");
+		fprintf(stderr, "Players Draw\n");
 	close(newsock1);
 	close(newsock2);
 	return 0;
