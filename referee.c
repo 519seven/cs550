@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
 	else if (score2 > score1)
 		fprintf(stderr, "Player 2 Wins\n");
 	else if (score1 == score2)
-		fprintf(stderr, "Players Draw");
+		fprintf(stderr, "Players Draw\n");
 	close(newsock1);
 	close(newsock2);
 	return 0;
@@ -223,7 +223,7 @@ void readstr(int fd, char *buffer, size_t len)
 	size_t offset = 0;
 	while (result = read(fd, &buffer, sizeof &buffer))
 	{
-		fprintf(stderr, "result: %s\n", result);
+		fprintf(stderr, "result: %d\n", result);
 		if (ch != '\n')
 		{
 			buffer += ch;
