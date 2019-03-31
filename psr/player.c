@@ -125,7 +125,7 @@ void readstr(int fd, char buffer[], size_t len)
 	for (;;)
 	{
 		result = recv(fd, &buffer[offset], len, 0);
-		fprintf(stderr, "%s\n", result);
+		fprintf(stderr, "%d\n", result);
 		if (result < 0)
 		{
 			perror("readStr");

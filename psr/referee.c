@@ -223,7 +223,7 @@ void readstr(int fd, char *buffer, size_t len)
 	size_t offset = 0;
 	while (result = read(fd, &buffer, sizeof &buffer))
 	{
-		fprintf(stderr, "result: %s\n", result);
+		fprintf(stderr, "result: %d\n", result);
 		if (ch != '\n')
 		{
 			buffer += ch;
