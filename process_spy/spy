@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+# //////////////////////////////////////////////////////////////////////////// #
+# Copyright 2019 Pete Akey    //    spy script assignment for CS550 project 3  #
+# //////////////////////////////////////////////////////////////////////////// #
+
+# Traps - CTRL+C and on EXIT
+trap programBy INT
+trap cleanUp EXIT
+
+function printargs { printf "%s\n%s\n" "tsec=${1}" "cnt=${2}"; }
+function programBy { printf "%s\n" "Program is written by Pete Akey"; exit 0; }
+function usage { printf "Usage: %s: [list of patterns] [-t secs] [-n count] \n" "$0"; }
+function cleanUp { echo 'Removing files'; rm -f /tmp/spy_*; programBy; }
+
+# //////////////////////////////////////////////////////////////////////////// #
+# Ensure we have proper arguments and create the filter list                   #
+# //////////////////////////////////////////////////////////////////////////// #
+
+declare -a filter=(); # initialize array
+re='^[0-9]+$'; i=0;   # regex for matching a number
+ignoreMore=0;         # attempt to catch errant arguments
+# Check arguments passed to the script
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    -t|--tseconds)
+      if ! [[ $2 =~ $re ]] ; then printf "%s\n" "${1} must be a number"; usage; exit 2; else tsec=$2; fi; ignoreMore=1; shift;;
+    -n|--count)
+      if ! [[ $2 =~ $re ]] ; then printf "%s\n" "${1} must be a number"; usage; exit 2; else cnt=$2; fi; ignoreMore=1; shift;;
+    *)
+      [[ "$ignoreMore" -eq "0" ]] && filter[$i]=$1 || printf "Ignoring misplaced argument: $1 - add filter list before other arguments\n"; ((i++));;
+    \?)
+      echo "Unknown parameter passed: $1"; exit 1;;
+  esac;
+  shift;
+done
+
+if [ -z "$tsec" ]; then printf "Option -t not specified. Default of 1 set.\n"; tsec=1; fi
+if [ -z "$cnt" ]; then printf "Option -n not specified. Default of 5 set.\n"; cnt=5; fi
+# Build the regex from filter list supplied by the end user
+grepper=; h=;
+for h in "${filter[@]}"; do if [[ ! -z $grepper ]]; then grepper="$grepper|"; fi; grepper="$grepper$h"; done
+if [[ ! -z $grepper ]]; then echo "A filter of \"$grepper\" being applied"; else echo "No filter to apply"; fi
+
+# //////////////////////////////////////////////////////////////////////////// #
+# Steps, as commented in the code                                              #
+# 1.) Create a base line list of running processes                             #
+# 2.) Wait "-t secs"                                                           #
+# 3.) Create another list of running processes                                 #
+# 4.) Compare processes in two lists, a left (old) and a right (new) one       #
+# 4.a.) If processes are in the right but not the left,                        #
+#       something has started                                                  #
+# 4.b.) If processes are in the left file but not the right one,               #
+#       something has stopped                                                  #
+# 5.) Save current list to the old so it can be compared next time around      #
+# //////////////////////////////////////////////////////////////////////////// #
+
+function createList {
+  freshDate=$(date);
+  echo '' > "$1";
+  if [[ $i -eq 1 ]]; then
+    printf "%s\n" "--------------------------------------------------------------------------------";
+    printf "Pass #%s %s\n%s\n" "$i" "$freshDate" "Recording baseline process list (we don't have anything to compare to, yet)";
+    printf "%s\n" "--------------------------------------------------------------------------------";
+  fi
+  while IFS= read -r line; do
+    echo "$line" | grep -P "$grepper" - >> "$1";
+  done < <(ps -ea -o user,pid,ppid,command | grep -v $$)  # get ppid so I can ignore this script but still catch other "spy" scripts
+  # Replace one or more spaces with a single space
+  # Why?  It is very difficult to carry tabs and multiple spaces everywhere you
+  #       need them to be; it's easier to make everything just be one
+  sed -i 's/ \{1,\}/ /g' "$1";
+}
+
+function compareProcessList {
+  declare -a started=(); # initialize array
+  declare -a stopped=(); # initialize array
+  if [[ -f $1 ]] && [[ -f $2 ]]; then     # make sure the files are there
+    j=0;
+    # Find stopped processes (in the left file but not the right)
+    while IFS='' read -r; do
+      stringDoctor "$REPLY";
+      grepCnt=$(grep -c "$eReply" "$2");  # number of times the search string is found in the file
+      if [ "$grepCnt" -eq 0 ]; then       # count=0 means not found
+        stopped[$j]="$REPLY";             # eReply is the doctored output; here, we want $REPLY
+        ((j++));                          # increment array counter
+      fi;
+    done < <(cat "$1");                   # $1 is the "left" file, read it in
+    j=0;
+    # Find started processes (in the right but not the left)
+    while IFS='' read -r; do
+      stringDoctor "$REPLY";
+      grepCnt=$(grep -c "$eReply" "$1");  # number of times the search string is found in the file
+      if [ "$grepCnt" -eq 0 ]; then       # count=0 means not found
+        started[$j]="$REPLY";             # eReply is the doctored output; here, we want $REPLY
+        ((j++));                          # increment array counter
+      fi;
+    done < <(cat "$2");                   # $2 is the "right" file, read it in
+  else
+    printf "%s\n" "Initializing process list...";
+  fi
+  printf "%s\n" "--------------------------------------------------------------------------------";
+  printf "Pass #%s %s\n" "$i" "$freshDate";
+  printStarts "${started[@]}";
+  printStops "${stopped[@]}";
+  printf "%s\n" "--------------------------------------------------------------------------------";
+}
+
+# Print started and stopped processes to stdout
+function printStarts { arr=("$@"); for k in "${arr[@]}"; do echo "Started:" "$k"; done }
+function printStops { arr=("$@"); for k in "${arr[@]}"; do echo "Stopped:" "$k"; done }
+# Escape any open and close brackets so grep doesn't expect to find a range between "[" and "]"
+function stringDoctor { eReply=$(echo "$REPLY" | sed 's/[][]/\\&/g'); eReply=$(echo "$eReply" | sed 's/\*/\\*/g'); }
+
+# //////////////////////////////////////////////////////////////////////////// #
+# Main program flow                                                            #
+# //////////////////////////////////////////////////////////////////////////// #
+
+i=1;
+# Step 1
+originalList=/tmp/spy_$(date +%Y%m%d"T"%H%M%S).txt;
+createList "$originalList";
+# Step 2
+sleep $tsec;
+i=$(( $i + 1 ));
+while [ $i -le $cnt ]; do
+  # Step 3
+  newList=/tmp/spy_$(date +%Y%m%d"T"%H%M%S).txt;
+  createList "$newList";
+  # Step 4
+  compareProcessList "$originalList" "$newList";
+  # Step 5
+  originalList=$newList;
+  i=$(( $i + 1 ));
+  if [ $i -le $cnt ]; then sleep $tsec; fi
+done
